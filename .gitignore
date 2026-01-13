@@ -1,0 +1,10 @@
+/*
+!/src/
+!/test/
+!/requirements.txt
+!/.gitignore
+
+# Ignore python caches
+**/__pycache__/
+*.py[cod]
+*$py.class

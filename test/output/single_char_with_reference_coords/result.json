@@ -1,0 +1,51 @@
+{
+  "test_name": "single_char_with_reference_coords",
+  "description": "Page 8: Single character with reference coordinates",
+  "success": true,
+  "meets_expectations": true,
+  "expectation_msg": null,
+  "config": {
+    "is_multi_characters": false,
+    "has_circle": true,
+    "longitude_prefix": "",
+    "latitude_prefix": ""
+  },
+  "results": {
+    "total_lines": 13,
+    "longitude_lines": 5,
+    "latitude_lines": 8,
+    "longitude_labels": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "6"
+    ],
+    "latitude_labels": [
+      "A",
+      "A",
+      "D",
+      "D",
+      "E",
+      "E",
+      "F",
+      "F"
+    ]
+  },
+  "expected": {
+    "longitude_count": 5,
+    "latitude_count": 8
+  },
+  "files": {
+    "cropped_path": "test/output/single_char_with_reference_coords/page8_cropped.png",
+    "csv_path": "test/output/single_char_with_reference_coords/page8_gridlines.csv",
+    "visualization_path": "test/output/single_char_with_reference_coords/page8_visualization.png"
+  },
+  "validation": {
+    "has_content": true,
+    "edge_ratio": 0.02968219571671731,
+    "line_ratio": 0.06717617991064533,
+    "hist_variance": 802328150016.0,
+    "confidence": 1.0
+  }
+}

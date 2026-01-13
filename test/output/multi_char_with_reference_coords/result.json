@@ -1,0 +1,52 @@
+{
+  "test_name": "multi_char_with_reference_coords",
+  "description": "Page 2: Multi-character with reference coordinates",
+  "success": true,
+  "meets_expectations": true,
+  "expectation_msg": null,
+  "config": {
+    "is_multi_characters": true,
+    "has_circle": true,
+    "longitude_prefix": "X",
+    "latitude_prefix": "Y"
+  },
+  "results": {
+    "total_lines": 14,
+    "longitude_lines": 9,
+    "latitude_lines": 5,
+    "longitude_labels": [
+      "X1",
+      "X2",
+      "X3",
+      "X4",
+      "X5",
+      "X6",
+      "X7",
+      "X8",
+      "X9"
+    ],
+    "latitude_labels": [
+      "Y1",
+      "Y2",
+      "Y3",
+      "Y4",
+      "Y5"
+    ]
+  },
+  "expected": {
+    "longitude_count": 9,
+    "latitude_count": 5
+  },
+  "files": {
+    "cropped_path": "test/output/multi_char_with_reference_coords/page2_cropped.png",
+    "csv_path": "test/output/multi_char_with_reference_coords/page2_gridlines.csv",
+    "visualization_path": "test/output/multi_char_with_reference_coords/page2_visualization.png"
+  },
+  "validation": {
+    "has_content": true,
+    "edge_ratio": 0.0600085175090866,
+    "line_ratio": 0.1231511502397002,
+    "hist_variance": 442032750592.0,
+    "confidence": 1.0
+  }
+}

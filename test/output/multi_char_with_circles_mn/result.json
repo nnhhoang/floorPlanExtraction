@@ -1,0 +1,43 @@
+{
+  "test_name": "multi_char_with_circles_mn",
+  "description": "Page 2: Multi-character format with custom M/N prefixes",
+  "success": true,
+  "meets_expectations": true,
+  "expectation_msg": null,
+  "config": {
+    "is_multi_characters": true,
+    "has_circle": true,
+    "longitude_prefix": "M",
+    "latitude_prefix": "N"
+  },
+  "results": {
+    "total_lines": 5,
+    "longitude_lines": 1,
+    "latitude_lines": 4,
+    "longitude_labels": [
+      "M49"
+    ],
+    "latitude_labels": [
+      "N23",
+      "N23",
+      "N39",
+      "N49"
+    ]
+  },
+  "expected": {
+    "longitude_count": 0,
+    "latitude_count": 0
+  },
+  "files": {
+    "cropped_path": "test/output/multi_char_with_circles_mn/page2_cropped.png",
+    "csv_path": "test/output/multi_char_with_circles_mn/page2_gridlines.csv",
+    "visualization_path": "test/output/multi_char_with_circles_mn/page2_visualization.png"
+  },
+  "validation": {
+    "has_content": true,
+    "edge_ratio": 0.0600085175090866,
+    "line_ratio": 0.1231511502397002,
+    "hist_variance": 442032750592.0,
+    "confidence": 1.0
+  }
+}

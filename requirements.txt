@@ -1,0 +1,39 @@
+# Core dependencies for PDF floor plan extraction
+PyMuPDF==1.24.14  # PyMuPDF provides fitz module for PDF handling
+opencv-python-headless==4.10.0.84  # Use headless version for Lambda
+numpy==1.26.4
+pandas==2.2.3  # For grid line data processing
+paddlepaddle==3.2.1  # Latest stable version
+paddleocr==2.9.1
+
+# AWS SDK
+boto3==1.35.76
+botocore==1.35.76
+
+# Optional: for better performance
+Pillow==11.0.0
+
+# Development dependencies (for testing)
+loguru==0.7.3
+setuptools==80.9.0
+wheel==0.45.1
+
+# Note: PaddleOCR will install additional dependencies:
+# - paddlepaddle
+# - Shapely
+# - scikit-image
+# - imgaug
+# - pyclipper
+# - lmdb
+# - tqdm
+# - numpy
+# - visualdl
+# - rapidfuzz
+# - opencv-python
+# - opencv-contrib-python
+# - cython
+# - lxml
+# - premailer
+# - openpyxl
+# - attrdict
+# - PyYAML

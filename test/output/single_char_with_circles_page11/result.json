@@ -1,0 +1,51 @@
+{
+  "test_name": "single_char_with_circles_page11",
+  "description": "Page 11: Single character format (1-5, A-F) with circles",
+  "success": true,
+  "meets_expectations": true,
+  "expectation_msg": null,
+  "config": {
+    "is_multi_characters": false,
+    "has_circle": true,
+    "longitude_prefix": "",
+    "latitude_prefix": ""
+  },
+  "results": {
+    "total_lines": 13,
+    "longitude_lines": 5,
+    "latitude_lines": 8,
+    "longitude_labels": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "6"
+    ],
+    "latitude_labels": [
+      "A",
+      "A",
+      "C",
+      "C",
+      "E",
+      "E",
+      "F",
+      "F"
+    ]
+  },
+  "expected": {
+    "longitude_count": 5,
+    "latitude_count": 8
+  },
+  "files": {
+    "cropped_path": "test/output/single_char_with_circles_page11/page11_cropped.png",
+    "csv_path": "test/output/single_char_with_circles_page11/page11_gridlines.csv",
+    "visualization_path": "test/output/single_char_with_circles_page11/page11_visualization.png"
+  },
+  "validation": {
+    "has_content": true,
+    "edge_ratio": 0.027282201930293456,
+    "line_ratio": 0.05807541958179756,
+    "hist_variance": 810774298624.0,
+    "confidence": 1.0
+  }
+}
