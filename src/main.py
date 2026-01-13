@@ -148,16 +148,37 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
             # Load image for grid detection
             image = cv2.imread(str(png_path))
 
-        # Step 2: Detect and crop floor plan region
-        log.info(f"\n[2/4] Detecting floor plan region...")
+        # Step 2: Detect and crop floor plan region FIRST
+        log.info(f"\n[2/5] Detecting floor plan region...")
+
+        # Pre-crop the floor plan before auto-detection (same as test.py)
+        cropped_image = image
+        crop_rect = None
+        if not no_auto_crop:
+            cropped_image, crop_rect = ImageProcessor.find_and_crop_floor_plan(
+                image,
+                min_area_ratio=min_area_ratio,
+                padding=10
+            )
+            if crop_rect:
+                x, y, w, h = crop_rect
+                log.info(f"      ✓ Floor plan region detected: {w}x{h} at ({x}, {y})")
+                
+                # Save cropped image
+                cv2.imwrite(str(cropped_path), cropped_image)
+                log.info(f"      ✓ Cropped floor plan saved: {cropped_path}")
+            else:
+                log.warning("      ⚠ No floor plan region detected, using full page")
+                cropped_image = image
 
         detector = GridDetector(use_gpu=use_gpu)
 
-        # Auto-detect or use manual configuration
+        # Step 3: Auto-detect or use manual configuration
+        # Run on CROPPED image (same as test.py)
         if auto_detect:
-            log.info(f"\n[2/5] Auto-detecting grid configuration...")
+            log.info(f"\n[3/5] Auto-detecting grid configuration...")
             auto_detector = AutoDetector(use_gpu=use_gpu)
-            config = auto_detector.detect_configuration(image)
+            config = auto_detector.detect_configuration(cropped_image)  # Use cropped image!
             
             # Use detected configuration
             is_multi_characters = config.is_multi_characters
@@ -173,50 +194,38 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
             long_prefix = longitude_prefix
             lat_prefix = latitude_prefix
             
-            log.info(f"\n[2/5] Using manual configuration...")
+            log.info(f"\n[3/5] Using manual configuration...")
             log.info(f"      Format: {'Multi-char' if is_multi_characters else 'Single-char'}")
             log.info(f"      Circles: {has_circle_detected}")
             log.info(f"      Prefixes: longitude='{long_prefix}', latitude='{lat_prefix}'")
 
-        # Step 3: Detect and crop floor plan region
-        log.info(f"\n[3/5] Detecting floor plan region...")
+        # Step 4: Detect grid lines on cropped image
+        log.info(f"\n[4/5] Detecting grid lines...")
 
         # Log detection parameters
         log.info(f"      Detection settings:")
-        log.info(f"        - Auto-crop: {'disabled' if no_auto_crop else 'enabled'}")
         log.info(f"        - Min line ratio: {min_line_ratio:.1%}")
         log.info(f"        - Min area ratio: {min_area_ratio:.1%}")
 
-        grid_lines, crop_rect = detector.process_floor_plan(
-            image,
+        grid_lines, _ = detector.process_floor_plan(
+            cropped_image,  # Use cropped image
             is_multi_characters=is_multi_characters,
             has_circle=has_circle_detected,
             longitude_prefix=long_prefix,
             latitude_prefix=lat_prefix,
-            auto_crop=not no_auto_crop,
+            auto_crop=False,  # Already cropped!
             min_area_ratio=min_area_ratio,
             min_line_length_ratio=min_line_ratio
         )
 
-        if crop_rect:
-            x, y, w, h = crop_rect
-            log.info(f"      ✓ Floor plan region detected: {w}x{h} at ({x}, {y})")
+        # Optionally save visualization of detected rectangle
+        if visualize and crop_rect:
+            rect_vis = ImageProcessor.visualize_rectangle(image, crop_rect)
+            cv2.imwrite(str(rect_vis_path), rect_vis)
+            log.info(f"      ✓ Region detection visualization: {rect_vis_path}")
 
-            # Save cropped image
-            cropped_img = ImageProcessor.crop_to_rectangle(image, crop_rect, padding=10)
-            cv2.imwrite(str(cropped_path), cropped_img)
-            log.info(f"      ✓ Cropped floor plan saved: {cropped_path}")
-
-            # Optionally save visualization of detected rectangle
-            if visualize:
-                rect_vis = ImageProcessor.visualize_rectangle(image, crop_rect)
-                cv2.imwrite(str(rect_vis_path), rect_vis)
-                log.info(f"      ✓ Region detection visualization: {rect_vis_path}")
-        else:
-            log.warning("      ⚠ No floor plan region detected, using full page")
-
-        # Step 4: Grid line detection results
-        log.info(f"\n[4/5] Grid line detection results...")
+        # Step 5: Grid line detection results
+        log.info(f"\n[5/6] Grid line detection results...")
 
         if not grid_lines:
             log.warning("      ⚠ No grid lines detected!")
@@ -231,15 +240,15 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
         log.info(f"        - X-axis (vertical): {x_lines} lines")
         log.info(f"        - Y-axis (horizontal): {y_lines} lines")
 
-        # Step 5: Export to CSV
-        log.info(f"\n[5/5] Exporting grid data...")
+        # Step 6: Export to CSV
+        log.info(f"\n[6/6] Exporting grid data...")
 
         detector.export_to_csv(grid_lines, csv_path)
         log.info(f"      ✓ Grid data saved: {csv_path}")
 
-        # Optional: Save visualization
+        # Optional: Save visualization on cropped image
         if visualize:
-            detector.visualize_grid_lines(image, grid_lines, vis_path)
+            detector.visualize_grid_lines(cropped_image, grid_lines, vis_path)
             log.info(f"      ✓ Grid lines visualization: {vis_path}")
 
         # Summary
