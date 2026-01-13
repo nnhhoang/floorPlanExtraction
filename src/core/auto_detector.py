@@ -347,7 +347,7 @@ class AutoDetector:
                 if pattern.match(clean_label):
                     matches[pattern_name] += 1
         
-        log.debug(f"Pattern matches: {matches}")
+        log.info(f"      Pattern matches: {matches}")
         
         total_matches = sum(matches.values())
         if total_matches == 0:
@@ -358,7 +358,17 @@ class AutoDetector:
         multi_matches = matches['multi_X'] + matches['multi_Y'] + matches['multi_M'] + matches['multi_N']
         single_matches = matches['single_num'] + matches['single_letter']
         
-        is_multi_char = multi_matches >= single_matches
+        log.info(f"      Multi-char matches: {multi_matches}, Single-char matches: {single_matches}")
+        
+        # FIXED: Single-char wins if it has more matches OR if multi has 0 matches
+        # Previously: is_multi_char = multi_matches >= single_matches (BUG: 0 >= 0 = True)
+        if multi_matches == 0 and single_matches > 0:
+            is_multi_char = False
+        elif single_matches == 0 and multi_matches > 0:
+            is_multi_char = True
+        else:
+            # Both have matches - use the one with more
+            is_multi_char = multi_matches > single_matches
         
         # Determine prefixes
         if is_multi_char:
