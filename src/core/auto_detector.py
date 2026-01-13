@@ -114,7 +114,7 @@ class AutoDetector:
         
         return config
     
-    def _scan_for_circles(self, image: np.ndarray) -> Tuple[List[Tuple[int, int, int]], bool]:
+    def _scan_for_circles(self, image: np.ndarray) -> Tuple[List[Tuple[int, int, int, np.ndarray]], bool]:
         """
         Scan margin regions for label circles.
         
@@ -122,7 +122,7 @@ class AutoDetector:
             image: Input image
             
         Returns:
-            Tuple of (list of circles, has_circle boolean)
+            Tuple of (list of (x, y, radius, margin_img) tuples, has_circle boolean)
         """
         height, width = image.shape[:2]
         margin_h = int(height * self.MARGIN_RATIO)
@@ -143,7 +143,9 @@ class AutoDetector:
         for margin_name, margin_img in margins.items():
             circles = self._detect_circles_in_region(margin_img)
             log.debug(f"  {margin_name} margin: {len(circles)} circles")
-            all_circles.extend(circles)
+            # Store margin_img reference with each circle for correct OCR later
+            for x, y, radius in circles:
+                all_circles.append((x, y, radius, margin_img))
         
         has_circle = len(all_circles) >= self.MIN_CIRCLES_THRESHOLD
         return all_circles, has_circle
@@ -203,15 +205,15 @@ class AutoDetector:
     def _sample_ocr_from_circles(
         self,
         image: np.ndarray,
-        circles: List[Tuple[int, int, int]],
+        circles: List[Tuple[int, int, int, np.ndarray]],
         max_samples: int = 5  # Reduced from 10 for speed
     ) -> List[str]:
         """
         OCR sample labels from detected circles.
         
         Args:
-            image: Full image
-            circles: List of (x, y, radius) tuples
+            image: Full image (not used, kept for compatibility)
+            circles: List of (x, y, radius, margin_img) tuples
             max_samples: Maximum number of circles to sample
             
         Returns:
@@ -220,10 +222,12 @@ class AutoDetector:
         labels = []
         sampled = circles[:max_samples]
         
-        for x, y, radius in sampled:
-            label = self._extract_label_from_circle(image, x, y, radius)
+        for x, y, radius, margin_img in sampled:
+            # Use margin_img for OCR (coordinates are relative to margin)
+            label = self._extract_label_from_circle(margin_img, x, y, radius)
             if label:
                 labels.append(label)
+                log.info(f"      Circle at ({x}, {y}) -> OCR: '{label}'")
         
         return labels
     
