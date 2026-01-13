@@ -27,18 +27,20 @@ class GridLine:
 class GridDetector:
     """Detect grid lines and extract coordinates from floor plan images."""
 
-    def __init__(self, use_gpu: bool = False):
+    def __init__(self, use_gpu: bool = True):
         """
         Initialize grid detector.
 
         Args:
-            use_gpu: Use GPU for OCR if available
+            use_gpu: Use GPU for OCR if available (default: True)
         """
         # Initialize EasyOCR for grid label detection (X1, Y1, etc.)
         # Use English for Latin character (X, Y) recognition
+        # EasyOCR will automatically fallback to CPU if GPU not available
         try:
             self.ocr = easyocr.Reader(['en'], gpu=use_gpu)
-            log.info("Grid detector initialized with EasyOCR (English)")
+            gpu_status = 'GPU' if use_gpu else 'CPU'
+            log.info(f"Grid detector initialized with EasyOCR ({gpu_status})")
         except Exception as e:
             log.error(f"Failed to initialize EasyOCR: {e}")
             raise
@@ -599,17 +601,13 @@ class GridDetector:
             lat_pattern = latitude_prefix.upper() + latitude_prefix.lower()
             pattern = rf'([{long_pattern}{lat_pattern}])(\d{{1,2}})'  # Limit to 1-2 digits
 
-        # Keep as color image (PaddleOCR needs 3 channels BGR/RGB)
-        # Try multiple scale factors - "1" is particularly hard to read, so try different sizes
-        # Start with 5x (best for most labels), then try 6x and 8x for difficult cases
-        scale_factors = [5, 6, 8]
+        # Keep as color image (EasyOCR handles 3 channels BGR/RGB)
+        # Use single scale factor for speed - 4x is good balance of accuracy and speed
+        scale_factors = [4]
 
-        # Try multiple preprocessing strategies
-        # Strategy 1: Normal image
-        # Strategy 2: Inverted image (for better contrast in some cases)
+        # Use only normal preprocessing for speed
         preprocessing_strategies = [
             ('normal', lambda img: img),
-            ('inverted', lambda img: cv2.bitwise_not(img))
         ]
 
         for scale_factor in scale_factors:
@@ -899,7 +897,7 @@ class GridDetector:
         image: np.ndarray,
         x_margin_height: int = 200,
         y_margin_width: int = 200,
-        enlarge_factor: int = 3,
+        enlarge_factor: int = 2,  # Reduced from 3 for speed
         longitude_prefix: str = 'X',
         latitude_prefix: str = 'Y'
     ) -> List[Tuple[str, int, int]]:

@@ -49,15 +49,16 @@ class AutoDetector:
     MIN_CIRCLES_THRESHOLD = 5  # Minimum circles to consider has_circle=True
     MARGIN_RATIO = 0.15  # 15% of image dimension for margin regions
     
-    def __init__(self, use_gpu: bool = False):
+    def __init__(self, use_gpu: bool = True):
         """
         Initialize AutoDetector.
         
         Args:
-            use_gpu: Use GPU for OCR if available
+            use_gpu: Use GPU for OCR if available (default: True)
         """
         self.ocr = easyocr.Reader(['en'], gpu=use_gpu)
-        log.info("AutoDetector initialized with EasyOCR")
+        gpu_status = 'GPU' if use_gpu else 'CPU'
+        log.info(f"AutoDetector initialized with EasyOCR ({gpu_status})")
     
     def detect_configuration(self, image: np.ndarray) -> AutoConfig:
         """
@@ -203,7 +204,7 @@ class AutoDetector:
         self,
         image: np.ndarray,
         circles: List[Tuple[int, int, int]],
-        max_samples: int = 10
+        max_samples: int = 5  # Reduced from 10 for speed
     ) -> List[str]:
         """
         OCR sample labels from detected circles.
