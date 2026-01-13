@@ -206,7 +206,7 @@ class AutoDetector:
         self,
         image: np.ndarray,
         circles: List[Tuple[int, int, int, np.ndarray]],
-        max_samples: int = 5  # Reduced from 10 for speed
+        max_samples: int = 8  # Sample more circles for better detection
     ) -> List[str]:
         """
         OCR sample labels from detected circles.

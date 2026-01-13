@@ -1160,16 +1160,19 @@ class GridDetector:
         """
         if not is_multi_characters:
             # Single-character format: validate pure numbers and letters
-            # Common misreads for numbers: "T" or "I" instead of "1"
-            if label in ['T', 'I']:
+            # Common misreads for numbers: "T", "I", "l", "L", "|", "/" instead of "1"
+            if label in ['T', 'I', 'l', 'L', '|', '/', 'i']:
                 log.info(f"OCR validation: correcting '{label}' → '1'")
                 return '1'
             # "O" instead of "0"
             if label == 'O':
                 log.info(f"OCR validation: correcting '{label}' → '0'")
                 return '0'
-            # "B" could be "8" in some fonts
             # "S" could be "5" in some fonts
+            if label == 'S':
+                log.info(f"OCR validation: correcting '{label}' → '5'")
+                return '5'
+            # "B" could be "8" in some fonts
             # But these are more ambiguous, so skip for now
         else:
             # Multi-character format: validate prefixed labels
