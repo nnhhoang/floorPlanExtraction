@@ -3,16 +3,11 @@ import os
 import cv2
 import numpy as np
 import pandas as pd
+import easyocr
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
-# Set HOME to /tmp for Lambda environment (writable directory)
-# PaddleOCR downloads models to ~/.paddleocr, which must be writable
-if os.environ.get('AWS_LAMBDA_FUNCTION_NAME'):
-    os.environ['HOME'] = '/tmp'
-
-from paddleocr import PaddleOCR
 from src.utils.logger import log
 from src.core.image_processor import ImageProcessor
 
@@ -37,25 +32,16 @@ class GridDetector:
         Initialize grid detector.
 
         Args:
-            use_gpu: Use GPU for OCR if available (currently ignored, uses CPU)
+            use_gpu: Use GPU for OCR if available
         """
-        # Initialize PaddleOCR for grid label detection (X1, Y1, etc.)
-        # Use English for better Latin character (X, Y) recognition
-        # Note: PaddleOCR 3.x changed API significantly
+        # Initialize EasyOCR for grid label detection (X1, Y1, etc.)
+        # Use English for Latin character (X, Y) recognition
         try:
-            self.ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang='en'  # English works better for Latin letters X and Y
-            )
-            log.info("Grid detector initialized with English OCR model")
+            self.ocr = easyocr.Reader(['en'], gpu=use_gpu)
+            log.info("Grid detector initialized with EasyOCR (English)")
         except Exception as e:
-            log.warning(f"Failed to initialize English OCR: {e}, trying defaults...")
-            try:
-                self.ocr = PaddleOCR()
-                log.info("Grid detector initialized with default OCR model")
-            except Exception as e2:
-                log.error(f"Failed to initialize OCR: {e2}")
-                raise
+            log.error(f"Failed to initialize EasyOCR: {e}")
+            raise
         log.info("Grid detector ready for X/Y label detection")
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
@@ -400,11 +386,12 @@ class GridDetector:
             return None
 
         try:
-            result = self.ocr.ocr(roi)
+            # EasyOCR returns: [(bbox, text, confidence), ...]
+            result = self.ocr.readtext(roi)
 
-            if result and result[0]:
-                # Extract text from OCR result
-                texts = [text_info[1][0] for text_info in result[0]]
+            if result:
+                # Extract text from EasyOCR result
+                texts = [detection[1] for detection in result]
                 full_text = ''.join(texts)
 
                 # Look for X or Y followed by numbers
@@ -639,30 +626,22 @@ class GridDetector:
                     # Apply preprocessing
                     preprocessed = preprocess_fn(enlarged)
 
-                    # Run OCR
-                    result = self.ocr.ocr(preprocessed)
+                    # Run EasyOCR - returns: [(bbox, text, confidence), ...]
+                    result = self.ocr.readtext(preprocessed)
 
-                    if not result or not result[0]:
+                    if not result:
                         log.debug(f"No OCR result for circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
-                        continue
-
-                    # PaddleOCR returns list format: [[[bbox], (text, confidence)], ...]
-                    detections = result[0]
-
-                    if not isinstance(detections, list):
-                        log.debug(f"Invalid OCR format for circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
                         continue
 
                     # Join all detected texts from all detections
                     full_text = ''
                     texts_found = []
-                    for detection in detections:
-                        if isinstance(detection, (list, tuple)) and len(detection) == 2:
-                            bbox, text_info = detection
-                            if isinstance(text_info, (list, tuple)) and len(text_info) == 2:
-                                text, confidence = text_info
-                                full_text += str(text).strip()
-                                texts_found.append(f"{text}({confidence:.2f})")
+                    for detection in result:
+                        # EasyOCR format: (bbox, text, confidence)
+                        if len(detection) >= 3:
+                            bbox, text, confidence = detection[0], detection[1], detection[2]
+                            full_text += str(text).strip()
+                            texts_found.append(f"{text}({confidence:.2f})")
 
                     # Debug: Log what OCR found
                     if texts_found:
@@ -978,31 +957,22 @@ class GridDetector:
 
                 log.info(f"Scanning {margin_name} margin ({w}x{h} → {w*enlarge_factor}x{h*enlarge_factor})...")
 
-                # Run OCR on enlarged margin
-                # For pure letter detection, try with det=True to force character detection
-                result = self.ocr.ocr(enlarged, det=True, rec=True, cls=True)
+                # Run EasyOCR on enlarged margin
+                result = self.ocr.readtext(enlarged)
 
-                if not result or not result[0]:
+                if not result:
                     log.debug(f"No OCR results in {margin_name} margin")
                     continue
 
-                detections = result[0]
-                if not isinstance(detections, list):
-                    continue
+                log.debug(f"Found {len(result)} text detections in {margin_name} margin")
 
-                log.debug(f"Found {len(detections)} text detections in {margin_name} margin")
-
-                # Process detections
-                for detection in detections:
+                # Process detections - EasyOCR format: [(bbox, text, confidence), ...]
+                for detection in result:
                     try:
-                        if not isinstance(detection, (list, tuple)) or len(detection) != 2:
+                        if len(detection) < 3:
                             continue
 
-                        bbox, text_info = detection
-                        if not isinstance(text_info, (list, tuple)) or len(text_info) != 2:
-                            continue
-
-                        text, confidence = text_info
+                        bbox, text, confidence = detection[0], detection[1], detection[2]
                         text_clean = str(text).strip().upper()
 
                         # Create pattern based on prefix settings

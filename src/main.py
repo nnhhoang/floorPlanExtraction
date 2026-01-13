@@ -9,6 +9,7 @@ from pathlib import Path
 from src.core.pdf_handler import PDFHandler
 from src.core.grid_detector import GridDetector
 from src.core.image_processor import ImageProcessor
+from src.core.auto_detector import AutoDetector
 from src.utils.logger import log
 
 
@@ -69,7 +70,35 @@ from src.utils.logger import log
     is_flag=True,
     help='Disable automatic floor plan region detection and cropping'
 )
-def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_ratio, min_area_ratio, no_auto_crop):
+@click.option(
+    '--auto-detect',
+    '-a',
+    is_flag=True,
+    help='Auto-detect grid label configuration (circles, format, prefixes)'
+)
+@click.option(
+    '--multi-char/--single-char',
+    default=True,
+    help='Label format: multi-char (X1/Y1) or single-char (1/A)'
+)
+@click.option(
+    '--has-circle/--no-circle',
+    default=True,
+    help='Whether labels are in circles'
+)
+@click.option(
+    '--longitude-prefix',
+    default='X',
+    help="Prefix for vertical axis labels (default: 'X', use '' for numbers)"
+)
+@click.option(
+    '--latitude-prefix',
+    default='Y',
+    help="Prefix for horizontal axis labels (default: 'Y', use '' for letters)"
+)
+def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_ratio, 
+                       min_area_ratio, no_auto_crop, auto_detect, multi_char, has_circle,
+                       longitude_prefix, latitude_prefix):
     """
     Extract floor plan image and grid line coordinates from PDF.
 
@@ -124,6 +153,34 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
 
         detector = GridDetector(use_gpu=use_gpu)
 
+        # Auto-detect or use manual configuration
+        if auto_detect:
+            log.info(f"\n[2/5] Auto-detecting grid configuration...")
+            auto_detector = AutoDetector(use_gpu=use_gpu)
+            config = auto_detector.detect_configuration(image)
+            
+            # Use detected configuration
+            is_multi_characters = config.is_multi_characters
+            has_circle_detected = config.has_circle
+            long_prefix = config.longitude_prefix
+            lat_prefix = config.latitude_prefix
+            
+            log.info(f"      ✓ Auto-detected: {config}")
+        else:
+            # Use manual configuration
+            is_multi_characters = multi_char
+            has_circle_detected = has_circle
+            long_prefix = longitude_prefix
+            lat_prefix = latitude_prefix
+            
+            log.info(f"\n[2/5] Using manual configuration...")
+            log.info(f"      Format: {'Multi-char' if is_multi_characters else 'Single-char'}")
+            log.info(f"      Circles: {has_circle_detected}")
+            log.info(f"      Prefixes: longitude='{long_prefix}', latitude='{lat_prefix}'")
+
+        # Step 3: Detect and crop floor plan region
+        log.info(f"\n[3/5] Detecting floor plan region...")
+
         # Log detection parameters
         log.info(f"      Detection settings:")
         log.info(f"        - Auto-crop: {'disabled' if no_auto_crop else 'enabled'}")
@@ -132,6 +189,10 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
 
         grid_lines, crop_rect = detector.process_floor_plan(
             image,
+            is_multi_characters=is_multi_characters,
+            has_circle=has_circle_detected,
+            longitude_prefix=long_prefix,
+            latitude_prefix=lat_prefix,
             auto_crop=not no_auto_crop,
             min_area_ratio=min_area_ratio,
             min_line_length_ratio=min_line_ratio
@@ -154,8 +215,8 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
         else:
             log.warning("      ⚠ No floor plan region detected, using full page")
 
-        # Step 3: Grid line detection results
-        log.info(f"\n[3/4] Grid line detection results...")
+        # Step 4: Grid line detection results
+        log.info(f"\n[4/5] Grid line detection results...")
 
         if not grid_lines:
             log.warning("      ⚠ No grid lines detected!")
@@ -170,8 +231,8 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
         log.info(f"        - X-axis (vertical): {x_lines} lines")
         log.info(f"        - Y-axis (horizontal): {y_lines} lines")
 
-        # Step 4: Export to CSV
-        log.info(f"\n[4/4] Exporting grid data...")
+        # Step 5: Export to CSV
+        log.info(f"\n[5/5] Exporting grid data...")
 
         detector.export_to_csv(grid_lines, csv_path)
         log.info(f"      ✓ Grid data saved: {csv_path}")
