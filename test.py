@@ -95,15 +95,15 @@ def run_test_case(
 
     try:
         # Initialize handlers
-        pdf_handler = PDFHandler(pdf_path)
         detector = GridDetector()
 
-        # Step 1: Extract page as image
+        # Step 1: Extract page as image (using context manager for proper resource cleanup)
         log.info("Step 1: Extracting page as image...")
-        page_image = pdf_handler.extract_page_as_image(
-            test_case.page_number,
-            output_format="numpy"
-        )
+        with PDFHandler(pdf_path) as pdf_handler:
+            page_image = pdf_handler.extract_page_as_image(
+                test_case.page_number,
+                output_format="numpy"
+            )
 
         # Step 2: Crop and validate floor plan
         log.info("Step 2: Detecting and cropping floor plan...")

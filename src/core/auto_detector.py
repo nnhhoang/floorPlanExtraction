@@ -9,12 +9,12 @@ Automatically detects:
 """
 import cv2
 import numpy as np
-import easyocr
 import re
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
 from src.utils.logger import log
+from src.utils.ocr_factory import OCRFactory
 
 
 @dataclass
@@ -52,13 +52,14 @@ class AutoDetector:
     def __init__(self, use_gpu: bool = True):
         """
         Initialize AutoDetector.
-        
+
         Args:
             use_gpu: Use GPU for OCR if available (default: True)
         """
-        self.ocr = easyocr.Reader(['en'], gpu=use_gpu)
-        gpu_status = 'GPU' if use_gpu else 'CPU'
-        log.info(f"AutoDetector initialized with EasyOCR ({gpu_status})")
+        # Use shared OCR instance via factory for better performance
+        # EasyOCR initialization is expensive (~2-5s, ~500MB+ memory)
+        self.ocr = OCRFactory.get_reader(use_gpu=use_gpu)
+        log.info("AutoDetector initialized with shared EasyOCR instance")
     
     def detect_configuration(self, image: np.ndarray) -> AutoConfig:
         """

@@ -36,15 +36,15 @@
     "latitude_count": 4
   },
   "files": {
-    "cropped_path": "test/output/multi_char_with_circles_xy_page3/page3_cropped.png",
-    "csv_path": "test/output/multi_char_with_circles_xy_page3/page3_gridlines.csv",
-    "visualization_path": "test/output/multi_char_with_circles_xy_page3/page3_visualization.png"
+    "cropped_path": "test\\output\\multi_char_with_circles_xy_page3\\page3_cropped.png",
+    "csv_path": "test\\output\\multi_char_with_circles_xy_page3\\page3_gridlines.csv",
+    "visualization_path": "test\\output\\multi_char_with_circles_xy_page3\\page3_visualization.png"
   },
   "validation": {
     "has_content": true,
-    "edge_ratio": 0.028812781968215972,
-    "line_ratio": 0.0545304731008709,
-    "hist_variance": 946864783360.0,
+    "edge_ratio": 0.028813150007872983,
+    "line_ratio": 0.05452188550887402,
+    "hist_variance": 946934251520.0,
     "confidence": 1.0
   }
 }

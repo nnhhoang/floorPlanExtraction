@@ -37,9 +37,9 @@
     "latitude_count": 8
   },
   "files": {
-    "cropped_path": "test/output/single_char_with_circles_page8/page8_cropped.png",
-    "csv_path": "test/output/single_char_with_circles_page8/page8_gridlines.csv",
-    "visualization_path": "test/output/single_char_with_circles_page8/page8_visualization.png"
+    "cropped_path": "test\\output\\single_char_with_circles_page8\\page8_cropped.png",
+    "csv_path": "test\\output\\single_char_with_circles_page8\\page8_gridlines.csv",
+    "visualization_path": "test\\output\\single_char_with_circles_page8\\page8_visualization.png"
   },
   "validation": {
     "has_content": true,

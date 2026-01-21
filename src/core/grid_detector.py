@@ -1,14 +1,15 @@
 """Grid line detection and coordinate extraction module"""
 import os
+import re
 import cv2
 import numpy as np
 import pandas as pd
-import easyocr
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 from src.utils.logger import log
+from src.utils.ocr_factory import OCRFactory
 from src.core.image_processor import ImageProcessor
 
 
@@ -34,16 +35,9 @@ class GridDetector:
         Args:
             use_gpu: Use GPU for OCR if available (default: True)
         """
-        # Initialize EasyOCR for grid label detection (X1, Y1, etc.)
-        # Use English for Latin character (X, Y) recognition
-        # EasyOCR will automatically fallback to CPU if GPU not available
-        try:
-            self.ocr = easyocr.Reader(['en'], gpu=use_gpu)
-            gpu_status = 'GPU' if use_gpu else 'CPU'
-            log.info(f"Grid detector initialized with EasyOCR ({gpu_status})")
-        except Exception as e:
-            log.error(f"Failed to initialize EasyOCR: {e}")
-            raise
+        # Use shared OCR instance via factory for better performance
+        # EasyOCR initialization is expensive (~2-5s, ~500MB+ memory)
+        self.ocr = OCRFactory.get_reader(use_gpu=use_gpu)
         log.info("Grid detector ready for X/Y label detection")
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
@@ -416,8 +410,6 @@ class GridDetector:
         Returns:
             Extracted label or None
         """
-        import re
-
         # Expected prefix
         prefix = "X" if is_vertical else "Y"
 
@@ -578,8 +570,6 @@ class GridDetector:
 
         if roi.size == 0:
             return None
-
-        import re
 
         # Determine pattern based on prefix settings
         if longitude_prefix == '' and latitude_prefix == '':
@@ -924,7 +914,6 @@ class GridDetector:
         try:
             height, width = image.shape[:2]
             labeled_positions = []
-            import re
 
             log.info(
                 f"Scanning margins for grid labels (longitude={longitude_prefix}, latitude={latitude_prefix}, "
@@ -1307,45 +1296,43 @@ class GridDetector:
                     enlarged_roi = cv2.resize(roi, (w * 6, h * 6), interpolation=cv2.INTER_CUBIC)
 
                     try:
-                        result = self.ocr.ocr(enlarged_roi, det=True, rec=True, cls=True)
-                        if result and result[0]:
-                            import re
-                            for detection in result[0]:
-                                if isinstance(detection, (list, tuple)) and len(detection) == 2:
-                                    bbox, text_info = detection
-                                    if isinstance(text_info, (list, tuple)) and len(text_info) == 2:
-                                        text, confidence = text_info
-                                        text_clean = str(text).strip().upper()
+                        # EasyOCR returns: [(bbox, text, confidence), ...]
+                        result = self.ocr.readtext(enlarged_roi)
+                        if result:
+                            for detection in result:
+                                if len(detection) >= 3:
+                                    bbox, text, confidence = detection[0], detection[1], detection[2]
+                                    text_clean = str(text).strip().upper()
 
-                                        # Match expected label pattern
+                                    # Match expected label pattern
+                                    if not is_multi_characters:
+                                        # Single-char: match pure number
+                                        match = re.search(r'(\d+)', text_clean)
+                                    else:
+                                        # Multi-char: match prefixed label
+                                        pattern = rf'({longitude_prefix.upper()})\s*(\d+)'
+                                        match = re.search(pattern, text_clean)
+
+                                    if match and confidence > 0.3:
                                         if not is_multi_characters:
-                                            # Single-char: match pure number
-                                            match = re.search(r'(\d+)', text_clean)
+                                            label = match.group(1)
                                         else:
-                                            # Multi-char: match prefixed label
-                                            pattern = rf'({longitude_prefix.upper()})\s*(\d+)'
-                                            match = re.search(pattern, text_clean)
+                                            label = f"{longitude_prefix.upper()}{match.group(2)}"
 
-                                        if match and confidence > 0.3:
-                                            if not is_multi_characters:
-                                                label = match.group(1)
-                                            else:
-                                                label = f"{longitude_prefix.upper()}{match.group(2)}"
+                                        if not expected_label or label == expected_label:
+                                            # Calculate position in original image
+                                            bbox_array = np.array(bbox)
+                                            center_x_enlarged = int(np.mean(bbox_array[:, 0]))
+                                            center_y_enlarged = int(np.mean(bbox_array[:, 1]))
+                                            center_x_roi = center_x_enlarged // 6
+                                            center_y_roi = center_y_enlarged // 6
+                                            abs_x = roi_x1 + center_x_roi
+                                            abs_y = roi_y1 + center_y_roi
 
-                                            if not expected_label or label == expected_label:
-                                                # Calculate position in original image
-                                                bbox_array = np.array(bbox)
-                                                center_x_enlarged = int(np.mean(bbox_array[:, 0]))
-                                                center_y_enlarged = int(np.mean(bbox_array[:, 1]))
-                                                center_x_roi = center_x_enlarged // 6
-                                                center_y_roi = center_y_enlarged // 6
-                                                abs_x = roi_x1 + center_x_roi
-                                                abs_y = roi_y1 + center_y_roi
-
-                                                reference_longitude_y = abs_y
-                                                labeled_positions.append((label, abs_x, abs_y))
-                                                log.info(f"  ✓ Found longitude reference '{label}' at ({abs_x}, {abs_y}) via OCR")
-                                                break
+                                            reference_longitude_y = abs_y
+                                            labeled_positions.append((label, abs_x, abs_y))
+                                            log.info(f"  ✓ Found longitude reference '{label}' at ({abs_x}, {abs_y}) via OCR")
+                                            break
                     except Exception as e:
                         log.debug(f"  OCR failed for longitude reference: {e}")
 
@@ -1387,44 +1374,42 @@ class GridDetector:
                     enlarged_roi = cv2.resize(roi, (w * 6, h * 6), interpolation=cv2.INTER_CUBIC)
 
                     try:
-                        result = self.ocr.ocr(enlarged_roi, det=True, rec=True, cls=True)
-                        if result and result[0]:
-                            import re
-                            for detection in result[0]:
-                                if isinstance(detection, (list, tuple)) and len(detection) == 2:
-                                    bbox, text_info = detection
-                                    if isinstance(text_info, (list, tuple)) and len(text_info) == 2:
-                                        text, confidence = text_info
-                                        text_clean = str(text).strip().upper()
+                        # EasyOCR returns: [(bbox, text, confidence), ...]
+                        result = self.ocr.readtext(enlarged_roi)
+                        if result:
+                            for detection in result:
+                                if len(detection) >= 3:
+                                    bbox, text, confidence = detection[0], detection[1], detection[2]
+                                    text_clean = str(text).strip().upper()
 
-                                        # Match expected label pattern
+                                    # Match expected label pattern
+                                    if not is_multi_characters:
+                                        # Single-char: match pure letter
+                                        match = re.search(r'([A-Z])', text_clean)
+                                    else:
+                                        # Multi-char: match prefixed label
+                                        pattern = rf'({latitude_prefix.upper()})\s*(\d+)'
+                                        match = re.search(pattern, text_clean)
+
+                                    if match and confidence > 0.3:
                                         if not is_multi_characters:
-                                            # Single-char: match pure letter
-                                            match = re.search(r'([A-Z])', text_clean)
+                                            label = match.group(1)
                                         else:
-                                            # Multi-char: match prefixed label
-                                            pattern = rf'({latitude_prefix.upper()})\s*(\d+)'
-                                            match = re.search(pattern, text_clean)
+                                            label = f"{latitude_prefix.upper()}{match.group(2)}"
 
-                                        if match and confidence > 0.3:
-                                            if not is_multi_characters:
-                                                label = match.group(1)
-                                            else:
-                                                label = f"{latitude_prefix.upper()}{match.group(2)}"
+                                        if not expected_label or label == expected_label:
+                                            bbox_array = np.array(bbox)
+                                            center_x_enlarged = int(np.mean(bbox_array[:, 0]))
+                                            center_y_enlarged = int(np.mean(bbox_array[:, 1]))
+                                            center_x_roi = center_x_enlarged // 6
+                                            center_y_roi = center_y_enlarged // 6
+                                            abs_x = roi_x1 + center_x_roi
+                                            abs_y = roi_y1 + center_y_roi
 
-                                            if not expected_label or label == expected_label:
-                                                bbox_array = np.array(bbox)
-                                                center_x_enlarged = int(np.mean(bbox_array[:, 0]))
-                                                center_y_enlarged = int(np.mean(bbox_array[:, 1]))
-                                                center_x_roi = center_x_enlarged // 6
-                                                center_y_roi = center_y_enlarged // 6
-                                                abs_x = roi_x1 + center_x_roi
-                                                abs_y = roi_y1 + center_y_roi
-
-                                                reference_latitude_x = abs_x
-                                                labeled_positions.append((label, abs_x, abs_y))
-                                                log.info(f"  ✓ Found latitude reference '{label}' at ({abs_x}, {abs_y}) via OCR")
-                                                break
+                                            reference_latitude_x = abs_x
+                                            labeled_positions.append((label, abs_x, abs_y))
+                                            log.info(f"  ✓ Found latitude reference '{label}' at ({abs_x}, {abs_y}) via OCR")
+                                            break
                     except Exception as e:
                         log.debug(f"  OCR failed for latitude reference: {e}")
 
@@ -1914,7 +1899,6 @@ class GridDetector:
         # Sort lines: X lines first (sorted by number), then Y lines
         def sort_key(line: GridLine):
             # Extract number from label (e.g., "X1" -> 1)
-            import re
             match = re.search(r'(\d+)', line.label)
             num = int(match.group(1)) if match else 0
             # X lines first (is_vertical=True), then Y lines

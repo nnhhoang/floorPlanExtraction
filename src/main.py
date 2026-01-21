@@ -3,6 +3,7 @@ PDF Floor Plan Extractor - Main CLI Interface
 
 Extract floor plan images and grid line coordinates from Taisei BIM standard PDFs.
 """
+import re
 import click
 import cv2
 from pathlib import Path
@@ -11,6 +12,25 @@ from src.core.grid_detector import GridDetector
 from src.core.image_processor import ImageProcessor
 from src.core.auto_detector import AutoDetector
 from src.utils.logger import log
+
+
+def sanitize_filename(name: str) -> str:
+    """
+    Remove potentially dangerous characters from filename.
+
+    Args:
+        name: Original filename
+
+    Returns:
+        Sanitized filename safe for filesystem operations
+    """
+    # Remove path separators and null bytes
+    sanitized = re.sub(r'[/\\:\x00]', '_', name)
+    # Keep only alphanumeric, underscore, hyphen, and period
+    sanitized = re.sub(r'[^\w\-.]', '_', sanitized)
+    # Prevent directory traversal
+    sanitized = sanitized.lstrip('.')
+    return sanitized if sanitized else 'unnamed'
 
 
 @click.command()
@@ -38,9 +58,9 @@ from src.utils.logger import log
 @click.option(
     '--dpi',
     '-d',
-    type=int,
+    type=click.IntRange(72, 1200),
     default=300,
-    help='Resolution in DPI for image extraction (default: 300)'
+    help='Resolution in DPI for image extraction (72-1200, default: 300)'
 )
 @click.option(
     '--visualize',
@@ -119,8 +139,8 @@ def extract_floor_plan(pdf, page, output_dir, dpi, visualize, use_gpu, min_line_
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate output filenames
-        base_name = f"{pdf_path.stem}_page{page}"
+        # Generate output filenames with sanitization for security
+        base_name = sanitize_filename(f"{pdf_path.stem}_page{page}")
         png_path = output_dir / f"{base_name}.png"
         cropped_path = output_dir / f"{base_name}_cropped.png"
         csv_path = output_dir / f"{base_name}_gridlines.csv"
