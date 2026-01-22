@@ -1,9 +1,9 @@
 {
   "test_name": "single_char_with_circles_page9",
-  "description": "Page 9: Single character format (1-5, A-F) with circles",
+  "description": "Page 9: Single character format (1-6, A-F) with circles",
   "success": true,
-  "meets_expectations": true,
-  "expectation_msg": null,
+  "meets_expectations": false,
+  "expectation_msg": "Expected 11 latitude lines, got 10. ",
   "config": {
     "is_multi_characters": false,
     "has_circle": true,
@@ -11,14 +11,15 @@
     "latitude_prefix": ""
   },
   "results": {
-    "total_lines": 15,
-    "longitude_lines": 5,
+    "total_lines": 16,
+    "longitude_lines": 6,
     "latitude_lines": 10,
     "longitude_labels": [
       "1",
       "2",
       "3",
       "4",
+      "5",
       "6"
     ],
     "latitude_labels": [
@@ -35,13 +36,13 @@
     ]
   },
   "expected": {
-    "longitude_count": 5,
-    "latitude_count": 10
+    "longitude_count": 6,
+    "latitude_count": 11
   },
   "files": {
-    "cropped_path": "test/output/single_char_with_circles_page9/page9_cropped.png",
-    "csv_path": "test/output/single_char_with_circles_page9/page9_gridlines.csv",
-    "visualization_path": "test/output/single_char_with_circles_page9/page9_visualization.png"
+    "cropped_path": "test\\output\\single_char_with_circles_page9\\page9_cropped.png",
+    "csv_path": "test\\output\\single_char_with_circles_page9\\page9_gridlines.csv",
+    "visualization_path": "test\\output\\single_char_with_circles_page9\\page9_visualization.png"
   },
   "validation": {
     "has_content": true,

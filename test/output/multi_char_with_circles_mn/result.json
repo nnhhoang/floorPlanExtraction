@@ -11,17 +11,16 @@
     "latitude_prefix": "N"
   },
   "results": {
-    "total_lines": 5,
-    "longitude_lines": 1,
-    "latitude_lines": 4,
+    "total_lines": 4,
+    "longitude_lines": 2,
+    "latitude_lines": 2,
     "longitude_labels": [
+      "M4",
       "M49"
     ],
     "latitude_labels": [
-      "N23",
-      "N23",
-      "N39",
-      "N49"
+      "N4",
+      "N4"
     ]
   },
   "expected": {
@@ -29,9 +28,9 @@
     "latitude_count": 0
   },
   "files": {
-    "cropped_path": "test/output/multi_char_with_circles_mn/page2_cropped.png",
-    "csv_path": "test/output/multi_char_with_circles_mn/page2_gridlines.csv",
-    "visualization_path": "test/output/multi_char_with_circles_mn/page2_visualization.png"
+    "cropped_path": "test\\output\\multi_char_with_circles_mn\\page2_cropped.png",
+    "csv_path": "test\\output\\multi_char_with_circles_mn\\page2_gridlines.csv",
+    "visualization_path": "test\\output\\multi_char_with_circles_mn\\page2_visualization.png"
   },
   "validation": {
     "has_content": true,

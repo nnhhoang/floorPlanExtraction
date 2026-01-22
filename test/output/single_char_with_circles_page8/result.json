@@ -11,14 +11,15 @@
     "latitude_prefix": ""
   },
   "results": {
-    "total_lines": 13,
-    "longitude_lines": 5,
+    "total_lines": 14,
+    "longitude_lines": 6,
     "latitude_lines": 8,
     "longitude_labels": [
       "1",
       "2",
       "3",
       "4",
+      "5",
       "6"
     ],
     "latitude_labels": [
@@ -33,7 +34,7 @@
     ]
   },
   "expected": {
-    "longitude_count": 5,
+    "longitude_count": 6,
     "latitude_count": 8
   },
   "files": {

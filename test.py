@@ -333,13 +333,13 @@ def get_all_test_cases() -> List[TestCase]:
             longitude_prefix='',  # Empty for pure numbers
             latitude_prefix=''    # Empty for pure letters
         ),
-        expected_longitude_count=5,  # 1-2-3-4-6
+        expected_longitude_count=6,  # 1-2-3-4-5-6 (5 now detected from middle/top)
         expected_latitude_count=8   # A-D-E-F-A-D-E-F
     ))
 
     test_cases.append(TestCase(
         name="single_char_with_circles_page9",
-        description="Page 9: Single character format (1-5, A-F) with circles",
+        description="Page 9: Single character format (1-6, A-F) with circles",
         page_number=9,
         config=GridLabelConfig(
             is_multi_characters=False,
@@ -347,13 +347,13 @@ def get_all_test_cases() -> List[TestCase]:
             longitude_prefix='',
             latitude_prefix=''
         ),
-        expected_longitude_count=5,  # 1-2-3-4-6
-        expected_latitude_count=10   # A-B-D-E-F-A-B-D-E-F
+        expected_longitude_count=6,  # 1-2-3-4-5-6
+        expected_latitude_count=10   # A-B-D-E-F × 2 (no C on this floor plan)
     ))
 
     test_cases.append(TestCase(
         name="single_char_with_circles_page10",
-        description="Page 10: Single character format (1-5, A-F) with circles",
+        description="Page 10: Single character format (1-6, A-F) with circles",
         page_number=10,
         config=GridLabelConfig(
             is_multi_characters=False,
@@ -361,13 +361,13 @@ def get_all_test_cases() -> List[TestCase]:
             longitude_prefix='',
             latitude_prefix=''
         ),
-        expected_longitude_count=5,  # 1-2-3-4-6
+        expected_longitude_count=6,  # 1-2-3-4-5-6 (5 now detected from middle/top)
         expected_latitude_count=8   # A-D-E-F-A-D-E-F
     ))
 
     test_cases.append(TestCase(
         name="single_char_with_circles_page11",
-        description="Page 11: Single character format (1-5, A-F) with circles",
+        description="Page 11: Single character format (1-6, A-F) with circles",
         page_number=11,
         config=GridLabelConfig(
             is_multi_characters=False,
@@ -375,7 +375,7 @@ def get_all_test_cases() -> List[TestCase]:
             longitude_prefix='',
             latitude_prefix=''
         ),
-        expected_longitude_count=5,  # 1-2-3-4-6
+        expected_longitude_count=6,  # 1-2-3-4-5-6 (5 now detected from middle/top)
         expected_latitude_count=8   # A-C-E-F-A-C-E-F
     ))
 
@@ -411,7 +411,7 @@ def get_all_test_cases() -> List[TestCase]:
             longitude_start={'label': '1', 'x': 1220, 'y': 3240},
             latitude_start={'label': 'A', 'x': 587, 'y': 2630}
         ),
-        expected_longitude_count=5,  # 1-2-3-4-6
+        expected_longitude_count=6,  # 1-2-3-4-5-6 (5 now detected from middle/top)
         expected_latitude_count=8   # A-D-E-F-A-D-E-F
     ))
 

@@ -2,8 +2,8 @@
   "test_name": "multi_char_with_circles_xy_page3",
   "description": "Page 3: Multi-character format (X1-X5, Y1-Y4) with circles",
   "success": true,
-  "meets_expectations": true,
-  "expectation_msg": null,
+  "meets_expectations": false,
+  "expectation_msg": "Expected 8 longitude lines, got 9. ",
   "config": {
     "is_multi_characters": true,
     "has_circle": true,
@@ -11,8 +11,8 @@
     "latitude_prefix": "Y"
   },
   "results": {
-    "total_lines": 12,
-    "longitude_lines": 8,
+    "total_lines": 13,
+    "longitude_lines": 9,
     "latitude_lines": 4,
     "longitude_labels": [
       "X1",
@@ -21,6 +21,7 @@
       "X2",
       "X3",
       "X3",
+      "X4",
       "X5",
       "X5"
     ],

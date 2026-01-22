@@ -592,15 +592,26 @@ class GridDetector:
             pattern = rf'([{long_pattern}{lat_pattern}])(\d{{1,2}})'  # Limit to 1-2 digits
 
         # Keep as color image (EasyOCR handles 3 channels BGR/RGB)
-        # Use single scale factor for speed - 4x is good balance of accuracy and speed
-        scale_factors = [4]
+        # Primary strategy: fast, works for most cases
+        primary_scale = 4
+        # Fallback strategies: only used when primary fails
+        # Include larger scales (5, 6) for cases where text is harder to read
+        fallback_configs = [(4, 'grayscale'), (5, 'normal'), (5, 'grayscale'), (6, 'normal'), (6, 'grayscale')]
 
-        # Use only normal preprocessing for speed
-        preprocessing_strategies = [
-            ('normal', lambda img: img),
-        ]
+        def to_grayscale(img):
+            if len(img.shape) == 3:
+                return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            return img
 
-        for scale_factor in scale_factors:
+        def get_preprocessed(img, strategy):
+            if strategy == 'grayscale':
+                return to_grayscale(img)
+            return img  # 'normal'
+
+        # Build list of (scale, strategy_name) to try
+        all_configs = [(primary_scale, 'normal')] + fallback_configs
+
+        for scale_factor, strategy_name in all_configs:
             # Resize ROI for better OCR (larger text is easier to recognize)
             h, w = roi.shape[:2]
             enlarged = cv2.resize(
@@ -609,104 +620,103 @@ class GridDetector:
                 interpolation=cv2.INTER_CUBIC
             )
 
-            for strategy_name, preprocess_fn in preprocessing_strategies:
-                try:
-                    # Apply preprocessing
-                    preprocessed = preprocess_fn(enlarged)
+            try:
+                # Apply preprocessing based on strategy
+                preprocessed = get_preprocessed(enlarged, strategy_name)
 
-                    # Run EasyOCR - returns: [(bbox, text, confidence), ...]
-                    result = self.ocr.readtext(preprocessed)
+                # Run EasyOCR - returns: [(bbox, text, confidence), ...]
+                result = self.ocr.readtext(preprocessed)
 
-                    if not result:
-                        log.debug(f"No OCR result for circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
-                        continue
+                if not result:
+                    log.debug(f"No OCR result for circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
+                    continue
 
-                    # Join all detected texts from all detections
-                    full_text = ''
-                    texts_found = []
-                    for detection in result:
-                        # EasyOCR format: (bbox, text, confidence)
-                        if len(detection) >= 3:
-                            bbox, text, confidence = detection[0], detection[1], detection[2]
-                            full_text += str(text).strip()
-                            texts_found.append(f"{text}({confidence:.2f})")
+                # Join all detected texts from all detections
+                full_text = ''
+                texts_found = []
+                for detection in result:
+                    # EasyOCR format: (bbox, text, confidence)
+                    if len(detection) >= 3:
+                        bbox, text, confidence = detection[0], detection[1], detection[2]
+                        full_text += str(text).strip()
+                        texts_found.append(f"{text}({confidence:.2f})")
 
-                    # Debug: Log what OCR found
-                    if texts_found:
-                        log.debug(f"OCR at ({x}, {y}) scale={scale_factor}x {strategy_name} found: {', '.join(texts_found)} -> full_text='{full_text}'")
+                # Debug: Log what OCR found
+                if texts_found:
+                    log.debug(f"OCR at ({x}, {y}) scale={scale_factor}x {strategy_name} found: {', '.join(texts_found)} -> full_text='{full_text}'")
 
-                    # Try to extract label based on format
-                    match = re.search(pattern, full_text, re.IGNORECASE)
+                # Try to extract label based on format
+                match = re.search(pattern, full_text, re.IGNORECASE)
 
-                    if match:
-                        # Handle different pattern match groups based on prefix settings
-                        if longitude_prefix == '' and latitude_prefix == '':
-                            # Pure number/letter format
-                            if match.group(1):  # Letter matched (latitude)
-                                label = match.group(1).upper()
-                            elif match.group(2):  # Number matched (longitude)
-                                label = match.group(2)
-                            else:
-                                continue
-                        elif longitude_prefix == '':
-                            # Pure numbers for longitude OR prefixed latitude
-                            if match.group(3):  # Pure number matched
-                                label = match.group(3)
-                            elif match.group(1) and match.group(2):  # Prefixed latitude
-                                prefix = match.group(1).upper()
-                                number = match.group(2)
-                                label = f"{prefix}{number}"
-                            else:
-                                continue
-                        elif latitude_prefix == '':
-                            # Prefixed longitude OR pure letter latitude
-                            if match.group(3):  # Pure letter matched
-                                label = match.group(3).upper()
-                            elif match.group(1) and match.group(2):  # Prefixed longitude
-                                prefix = match.group(1).upper()
-                                number = match.group(2)
-                                label = f"{prefix}{number}"
-                            else:
-                                continue
+                if match:
+                    # Handle different pattern match groups based on prefix settings
+                    if longitude_prefix == '' and latitude_prefix == '':
+                        # Pure number/letter format
+                        if match.group(1):  # Letter matched (latitude)
+                            label = match.group(1).upper()
+                        elif match.group(2):  # Number matched (longitude)
+                            label = match.group(2)
                         else:
-                            # Standard prefixed format
+                            continue
+                    elif longitude_prefix == '':
+                        # Pure numbers for longitude OR prefixed latitude
+                        if match.group(3):  # Pure number matched
+                            label = match.group(3)
+                        elif match.group(1) and match.group(2):  # Prefixed latitude
                             prefix = match.group(1).upper()
                             number = match.group(2)
                             label = f"{prefix}{number}"
-
-                        # Apply OCR validation to fix common misreads (T→1, I→1, O→0)
-                        is_multi_characters = (longitude_prefix != '' or latitude_prefix != '')
-                        validated_label = self.validate_ocr_label(
-                            label,
-                            is_multi_characters=is_multi_characters,
-                            longitude_prefix=longitude_prefix,
-                            latitude_prefix=latitude_prefix
-                        )
-
-                        log.info(f"Extracted label '{validated_label}' from circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
-                        return validated_label
+                        else:
+                            continue
+                    elif latitude_prefix == '':
+                        # Prefixed longitude OR pure letter latitude
+                        if match.group(3):  # Pure letter matched
+                            label = match.group(3).upper()
+                        elif match.group(1) and match.group(2):  # Prefixed longitude
+                            prefix = match.group(1).upper()
+                            number = match.group(2)
+                            label = f"{prefix}{number}"
+                        else:
+                            continue
                     else:
-                        # Pattern didn't match - try fallback validation for common misreads
-                        if full_text:
-                            log.debug(f"No label pattern match in text '{full_text}' at ({x}, {y})")
+                        # Standard prefixed format
+                        prefix = match.group(1).upper()
+                        number = match.group(2)
+                        label = f"{prefix}{number}"
 
-                            # For single-character format, try validating the full text as-is
-                            if longitude_prefix == '' and latitude_prefix == '':
-                                # Check if it's a common misread that we can fix
-                                validated = self.validate_ocr_label(
-                                    full_text,
-                                    is_multi_characters=False,
-                                    longitude_prefix=longitude_prefix,
-                                    latitude_prefix=latitude_prefix
-                                )
-                                # If validation changed it, and it's now a valid single char, use it
-                                if validated != full_text and (validated.isdigit() or validated.isalpha()):
-                                    log.info(f"Fallback validation: '{full_text}' → '{validated}' at ({x}, {y}) {strategy_name}")
-                                    return validated
+                    # Apply OCR validation to fix common misreads (T→1, I→1, O→0)
+                    is_multi_characters = (longitude_prefix != '' or latitude_prefix != '')
+                    validated_label = self.validate_ocr_label(
+                        label,
+                        is_multi_characters=is_multi_characters,
+                        longitude_prefix=longitude_prefix,
+                        latitude_prefix=latitude_prefix
+                    )
 
-                except Exception as e:
-                    log.debug(f"OCR scale={scale_factor}x {strategy_name} failed for circle at ({x}, {y}): {e}")
-                    continue
+                    log.info(f"Extracted label '{validated_label}' from circle at ({x}, {y}) scale={scale_factor}x {strategy_name}")
+                    return validated_label
+                else:
+                    # Pattern didn't match - log for debugging and try fallbacks
+                    if full_text:
+                        log.debug(f"OCR text '{full_text}' at ({x}, {y}) didn't match pattern - trying next strategy")
+
+                        # For single-character format, try validating the full text as-is
+                        if longitude_prefix == '' and latitude_prefix == '':
+                            # Check if it's a common misread that we can fix
+                            validated = self.validate_ocr_label(
+                                full_text,
+                                is_multi_characters=False,
+                                longitude_prefix=longitude_prefix,
+                                latitude_prefix=latitude_prefix
+                            )
+                            # If validation changed it, and it's now a valid single char, use it
+                            if validated != full_text and (validated.isdigit() or validated.isalpha()):
+                                log.info(f"Fallback validation: '{full_text}' → '{validated}' at ({x}, {y}) {strategy_name}")
+                                return validated
+
+            except Exception as e:
+                log.debug(f"OCR scale={scale_factor}x {strategy_name} failed for circle at ({x}, {y}): {e}")
+                continue
 
         return None
 
@@ -780,10 +790,11 @@ class GridDetector:
                 if not found_group:
                     y_groups[y].append((label, x, y))
 
-            # Find the largest group (most aligned longitude labels)
+            # Find alignment groups - support multiple rows (top AND bottom labels)
             if y_groups:
-                largest_group_y = max(y_groups.keys(), key=lambda k: len(y_groups[k]))
-                largest_group = y_groups[largest_group_y]
+                # Sort groups by size (largest first)
+                sorted_groups = sorted(y_groups.items(), key=lambda x: len(x[1]), reverse=True)
+                largest_group_y, largest_group = sorted_groups[0]
 
                 if longitude_prefix == '':
                     long_label_type = "vertical-axis"
@@ -793,7 +804,186 @@ class GridDetector:
                     f"Found {len(largest_group)} horizontally aligned {long_label_type} labels "
                     f"at Y≈{largest_group_y} (from {len(y_groups)} groups)"
                 )
-                filtered_positions.extend(largest_group)
+
+                # Handle duplicate labels in main group (for single-char format)
+                # Only remove duplicates if there are actual duplicates of the same label
+                if longitude_prefix == '' and len(largest_group) >= 3:
+                    # Group by label to detect duplicates
+                    label_candidates = {}
+                    for label, x, y in largest_group:
+                        if label not in label_candidates:
+                            label_candidates[label] = []
+                        label_candidates[label].append((label, x, y))
+
+                    # Check if there are any duplicate labels
+                    has_duplicates = any(len(c) > 1 for c in label_candidates.values())
+
+                    if has_duplicates:
+                        # Calculate typical x-spacing from non-duplicate labels
+                        unique_x_positions = []
+                        for label, candidates in label_candidates.items():
+                            if len(candidates) == 1:
+                                unique_x_positions.append(candidates[0][1])
+
+                        if len(unique_x_positions) >= 2:
+                            unique_x_positions.sort()
+                            # Calculate average spacing
+                            avg_spacing = (unique_x_positions[-1] - unique_x_positions[0]) / max(1, len(unique_x_positions) - 1)
+                            # Define bounds: first non-duplicate x - 1.5*spacing to last + 1.5*spacing
+                            lower_bound = unique_x_positions[0] - avg_spacing * 1.5
+                            upper_bound = unique_x_positions[-1] + avg_spacing * 1.5
+
+                            cleaned_group = []
+                            for label, candidates in label_candidates.items():
+                                if len(candidates) == 1:
+                                    cleaned_group.append(candidates[0])
+                                else:
+                                    # Multiple candidates for same label - pick the one within bounds
+                                    valid_candidates = [(l, x, y) for l, x, y in candidates if lower_bound <= x <= upper_bound]
+                                    if valid_candidates:
+                                        # Pick the one closest to the center of valid range
+                                        center_x = (lower_bound + upper_bound) / 2
+                                        best = min(valid_candidates, key=lambda c: abs(c[1] - center_x))
+                                        cleaned_group.append(best)
+                                        log.debug(f"Duplicate label '{label}': picked x={best[1]} (in bounds [{lower_bound:.0f}, {upper_bound:.0f}])")
+                                    else:
+                                        # None in bounds - pick the one closest to center
+                                        center_x = (lower_bound + upper_bound) / 2
+                                        best = min(candidates, key=lambda c: abs(c[1] - center_x))
+                                        cleaned_group.append(best)
+                                        log.debug(f"Duplicate label '{label}' (none in bounds): picked x={best[1]}")
+
+                            filtered_positions.extend(cleaned_group)
+                            actual_main_group = cleaned_group  # Use cleaned group for validation
+                            if len(cleaned_group) < len(largest_group):
+                                log.info(f"Duplicate filtering: removed {len(largest_group) - len(cleaned_group)} duplicate(s) from main group")
+                        else:
+                            # Not enough unique labels to calculate spacing, keep all
+                            filtered_positions.extend(largest_group)
+                            actual_main_group = largest_group
+                    else:
+                        # No duplicates, keep all
+                        filtered_positions.extend(largest_group)
+                        actual_main_group = largest_group
+                else:
+                    filtered_positions.extend(largest_group)
+                    actual_main_group = largest_group
+
+                # Track which labels we've already added (from the actual used group)
+                added_labels = {label for label, x, y in actual_main_group}
+
+                # Check other alignment groups for unique labels (labels at top/middle only)
+                # This handles cases where some labels only appear at top or middle of image
+                # Only include labels that fit the sequence (fill gaps or extend naturally)
+                # AND validate x-position is consistent with existing labels
+                existing_digits = {int(label) for label in added_labels if label.isdigit()}
+
+                # Get x-positions from the main group for position validation (use cleaned group)
+                main_group_x_positions = sorted([x for label, x, y in actual_main_group])
+
+                for group_y, group in sorted_groups[1:]:
+                    for label, x, y in group:
+                        if label not in added_labels:
+                            # Validate label format before including from secondary row
+                            is_valid_secondary = False
+                            if longitude_prefix == '':
+                                # Single-char format: only accept single digits 1-9 (not 0)
+                                # AND only if it fills a gap in the sequence
+                                # AND only if x-position is consistent with existing labels
+                                if len(label) == 1 and label.isdigit() and label != '0':
+                                    digit = int(label)
+                                    if existing_digits:
+                                        min_d, max_d = min(existing_digits), max(existing_digits)
+                                        # Accept if it fills a gap or extends by 1
+                                        sequence_valid = (min_d <= digit <= max_d) or \
+                                                        (digit == min_d - 1) or (digit == max_d + 1)
+
+                                        # Also validate x-position is near expected position
+                                        # For a label to be valid, its x should be where that specific digit
+                                        # would logically appear in the sequence
+                                        if sequence_valid and len(main_group_x_positions) >= 2:
+                                            # Build a mapping of digit -> x position from main group (use cleaned group)
+                                            digit_to_x = {}
+                                            for main_label, main_x, main_y in actual_main_group:
+                                                if main_label.isdigit():
+                                                    digit_to_x[int(main_label)] = main_x
+
+                                            # Find expected x-position for this digit based on neighbors
+                                            x_position_valid = False
+                                            if digit_to_x:
+                                                sorted_digits = sorted(digit_to_x.keys())
+                                                # Find neighboring digits in the sequence
+                                                lower_neighbor = None
+                                                upper_neighbor = None
+                                                for d in sorted_digits:
+                                                    if d < digit:
+                                                        lower_neighbor = d
+                                                    elif d > digit and upper_neighbor is None:
+                                                        upper_neighbor = d
+
+                                                # Calculate expected x-position range
+                                                if lower_neighbor is not None and upper_neighbor is not None:
+                                                    # Filling a sequence gap - check if digit is actually missing
+                                                    # For numbers, if sequence is [1,2,3,4,6] and we have digit 5,
+                                                    # it should fill the gap regardless of x-spacing
+                                                    lower_x = digit_to_x[lower_neighbor]
+                                                    upper_x = digit_to_x[upper_neighbor]
+                                                    # Check if there's a missing number in sequence between neighbors
+                                                    numbers_between = upper_neighbor - lower_neighbor - 1
+                                                    if numbers_between > 0:
+                                                        # There are missing numbers, validate x is in the gap
+                                                        tolerance = (upper_x - lower_x) * 0.2
+                                                        x_position_valid = (lower_x + tolerance < x < upper_x - tolerance)
+                                                    else:
+                                                        # No missing numbers (shouldn't happen), reject
+                                                        x_position_valid = False
+                                                elif lower_neighbor is not None:
+                                                    # Extending at the upper edge
+                                                    lower_x = digit_to_x[lower_neighbor]
+                                                    avg_spacing = (max(main_group_x_positions) - min(main_group_x_positions)) / max(1, len(main_group_x_positions) - 1)
+                                                    x_position_valid = (lower_x < x < lower_x + avg_spacing * 1.5)
+                                                elif upper_neighbor is not None:
+                                                    # Extending at the lower edge (leftmost label)
+                                                    # Require x to be reasonably close to the first detected label
+                                                    # Reject if x is at the far left edge (latitude label column region)
+                                                    upper_x = digit_to_x[upper_neighbor]
+                                                    min_main_x = min(main_group_x_positions)
+                                                    avg_spacing = (max(main_group_x_positions) - min(main_group_x_positions)) / max(1, len(main_group_x_positions) - 1)
+                                                    # x should be within 1.5x avg_spacing of the leftmost main label
+                                                    # AND x should be at least half of min_main_x (not at far left edge)
+                                                    x_position_valid = (min_main_x - avg_spacing * 1.5 < x < upper_x) and (x > min_main_x * 0.5)
+
+                                            is_valid_secondary = sequence_valid and x_position_valid
+                                            if not x_position_valid:
+                                                log.debug(
+                                                    f"Rejecting secondary label '{label}' at x={x}: "
+                                                    f"x-position not between expected neighbors"
+                                                )
+                                        else:
+                                            is_valid_secondary = sequence_valid
+                                    else:
+                                        is_valid_secondary = True
+                            else:
+                                # Multi-char format: accept labels matching pattern like X1, X2
+                                is_valid_secondary = (
+                                    label.upper().startswith(longitude_prefix.upper()) and
+                                    len(label) <= 3
+                                )
+
+                            if is_valid_secondary:
+                                filtered_positions.append((label, x, y))
+                                added_labels.add(label)
+                                if label.isdigit():
+                                    existing_digits.add(int(label))
+                                log.info(
+                                    f"Including unique {long_label_type} label '{label}' from secondary "
+                                    f"alignment row at Y≈{group_y}"
+                                )
+                            else:
+                                log.debug(
+                                    f"Skipping invalid secondary label '{label}' at Y≈{group_y} "
+                                    f"(not a valid grid label or doesn't fit sequence)"
+                                )
             else:
                 if longitude_prefix == '':
                     long_label_type = "vertical-axis"
@@ -823,10 +1013,11 @@ class GridDetector:
                 if not found_group:
                     x_groups[x].append((label, x, y))
 
-            # Find the largest group (most aligned latitude labels)
+            # Find alignment groups - support multiple columns (left AND right labels)
             if x_groups:
-                largest_group_x = max(x_groups.keys(), key=lambda k: len(x_groups[k]))
-                largest_group = x_groups[largest_group_x]
+                # Sort groups by size (largest first)
+                sorted_groups = sorted(x_groups.items(), key=lambda x: len(x[1]), reverse=True)
+                largest_group_x, largest_group = sorted_groups[0]
 
                 if latitude_prefix == '':
                     lat_label_type = "horizontal-axis"
@@ -836,7 +1027,125 @@ class GridDetector:
                     f"Found {len(largest_group)} vertically aligned {lat_label_type} labels "
                     f"at X≈{largest_group_x} (from {len(x_groups)} groups)"
                 )
+
+                # For latitude labels, y-position naturally varies (multiple floor levels)
+                # So we don't do outlier detection on y-position
+                # Just include all labels from the main group
                 filtered_positions.extend(largest_group)
+
+                # Track which labels we've already added
+                added_labels = {label for label, x, y in largest_group}
+
+                # Check other alignment groups for unique labels (labels at right side only)
+                # This handles cases where some labels only appear on right side of image
+                # Only include labels that fit the sequence (fill gaps or extend naturally)
+                # AND validate y-position is consistent with existing labels
+                existing_letters = {label.upper() for label in added_labels if len(label) == 1 and label.isalpha()}
+
+                # Get y-positions from the main group for position validation
+                main_group_y_positions = sorted([y for label, x, y in largest_group])
+
+                for group_x, group in sorted_groups[1:]:
+                    for label, x, y in group:
+                        if label not in added_labels:
+                            # Validate label format before including from secondary column
+                            is_valid_secondary = False
+                            if latitude_prefix == '':
+                                # Single-char format: only accept single letters A-Z
+                                # AND only if it fills a gap in the sequence
+                                # AND only if y-position is consistent with existing labels
+                                if len(label) == 1 and label.isalpha():
+                                    letter = label.upper()
+                                    if existing_letters:
+                                        letter_ords = [ord(l) for l in existing_letters]
+                                        min_ord, max_ord = min(letter_ords), max(letter_ords)
+                                        letter_ord = ord(letter)
+                                        # Accept if it fills a gap or extends by 1
+                                        sequence_valid = (min_ord <= letter_ord <= max_ord) or \
+                                                        (letter_ord == min_ord - 1) or (letter_ord == max_ord + 1)
+
+                                        # Also validate y-position is near expected position
+                                        # For a label to be valid, its y should be where that specific letter
+                                        # would logically appear in the sequence
+                                        if sequence_valid and len(main_group_y_positions) >= 2:
+                                            # Build a mapping of letter -> y position from main group
+                                            letter_to_y = {}
+                                            for main_label, main_x, main_y in largest_group:
+                                                if len(main_label) == 1 and main_label.isalpha():
+                                                    letter_to_y[main_label.upper()] = main_y
+
+                                            # Find expected y-position for this letter based on neighbors
+                                            y_position_valid = False
+                                            if letter_to_y:
+                                                sorted_letters = sorted(letter_to_y.keys())
+                                                letter_upper = letter.upper()
+                                                # Find neighboring letters in the sequence
+                                                lower_neighbor = None
+                                                upper_neighbor = None
+                                                for l in sorted_letters:
+                                                    if l < letter_upper:
+                                                        lower_neighbor = l
+                                                    elif l > letter_upper and upper_neighbor is None:
+                                                        upper_neighbor = l
+
+                                                # Calculate expected y-position range
+                                                # For latitude labels, be more conservative:
+                                                # - Only accept if it extends at edges (not filling gaps)
+                                                # - This is because missing letters usually mean they don't exist
+                                                if lower_neighbor is not None and upper_neighbor is not None:
+                                                    # Filling a gap - be very strict, require clear evidence
+                                                    # Only accept if there's a large gap in y-positions
+                                                    lower_y = letter_to_y[lower_neighbor]
+                                                    upper_y = letter_to_y[upper_neighbor]
+                                                    y_gap = abs(upper_y - lower_y)
+                                                    avg_spacing = (max(main_group_y_positions) - min(main_group_y_positions)) / max(1, len(main_group_y_positions) - 1)
+                                                    # Only accept if gap is more than 1.5x average (indicating missing label)
+                                                    if y_gap > avg_spacing * 1.5:
+                                                        min_neighbor_y = min(lower_y, upper_y)
+                                                        max_neighbor_y = max(lower_y, upper_y)
+                                                        tolerance = y_gap * 0.2
+                                                        y_position_valid = (min_neighbor_y + tolerance < y < max_neighbor_y - tolerance)
+                                                    else:
+                                                        # Gap is too small, likely no missing label
+                                                        y_position_valid = False
+                                                elif lower_neighbor is not None or upper_neighbor is not None:
+                                                    # Extending at an edge - be moderately lenient
+                                                    avg_spacing = (max(main_group_y_positions) - min(main_group_y_positions)) / max(1, len(main_group_y_positions) - 1)
+                                                    min_y = min(main_group_y_positions)
+                                                    max_y = max(main_group_y_positions)
+                                                    y_position_valid = (min_y - avg_spacing * 1.5 < y < max_y + avg_spacing * 1.5)
+
+                                            is_valid_secondary = sequence_valid and y_position_valid
+                                            if not y_position_valid:
+                                                log.debug(
+                                                    f"Rejecting secondary label '{label}' at y={y}: "
+                                                    f"y-position not between expected neighbors"
+                                                )
+                                        else:
+                                            is_valid_secondary = sequence_valid
+                                    else:
+                                        is_valid_secondary = True
+                            else:
+                                # Multi-char format: accept labels matching pattern like Y1, Y2
+                                is_valid_secondary = (
+                                    label.upper().startswith(latitude_prefix.upper()) and
+                                    len(label) <= 3
+                                )
+
+                            if is_valid_secondary:
+                                filtered_positions.append((label, x, y))
+                                added_labels.add(label)
+                                if len(label) == 1 and label.isalpha():
+                                    existing_letters.add(label.upper())
+                                log.info(
+                                    f"Including unique {lat_label_type} label '{label}' from secondary "
+                                    f"alignment column at X≈{group_x}"
+                                )
+                            else:
+                                log.debug(
+                                    f"Skipping invalid secondary label '{label}' at X≈{group_x} "
+                                    f"(not a valid grid label or doesn't fit sequence)"
+                                )
             else:
                 if latitude_prefix == '':
                     lat_label_type = "horizontal-axis"
@@ -920,11 +1229,13 @@ class GridDetector:
                 f"X margin: {x_margin_height}px, Y margin: {y_margin_width}px, enlarge={enlarge_factor}x)..."
             )
 
-            # Define margins to scan with specific dimensions for longitude and latitude labels
-            # ONLY scan bottom and left to avoid false positives from interior content
+            # Define margins to scan - grid labels can be on ANY edge
+            # Scan all four edges to catch labels wherever they are placed
             margins = {
-                'bottom': (0, height - x_margin_height, width, height),  # Longitude labels: bottom x_margin_height
-                'left': (0, 0, y_margin_width, height),                   # Latitude labels: left y_margin_width
+                'bottom': (0, height - x_margin_height, width, height),  # Bottom edge
+                'top': (0, 0, width, x_margin_height),                    # Top edge
+                'left': (0, 0, y_margin_width, height),                   # Left edge
+                'right': (width - y_margin_width, 0, width, height),      # Right edge
             }
 
             for margin_name, (x1, y1, x2, y2) in margins.items():
@@ -1165,8 +1476,27 @@ class GridDetector:
             # But these are more ambiguous, so skip for now
         else:
             # Multi-character format: validate prefixed labels
+            # Common OCR misreads for numbers in labels
+            ocr_number_fixes = {
+                'S': '5',  # XS -> X5, YS -> Y5
+                'O': '0',  # XO -> X0, YO -> Y0
+                'I': '1',  # XI -> X1, YI -> Y1
+                'L': '1',  # XL -> X1, YL -> Y1
+                'Z': '2',  # XZ -> X2, YZ -> Y2
+                'B': '8',  # XB -> X8, YB -> Y8
+                'G': '6',  # XG -> X6, YG -> Y6
+            }
+
             # Check if label starts with expected prefix
-            if not label.startswith(longitude_prefix.upper()) and not label.startswith(latitude_prefix.upper()):
+            if label.startswith(longitude_prefix.upper()) or label.startswith(latitude_prefix.upper()):
+                # Fix number part if it's a common misread
+                prefix = label[0]
+                number_part = label[1:]
+                if number_part in ocr_number_fixes:
+                    corrected = prefix + ocr_number_fixes[number_part]
+                    log.info(f"OCR validation: correcting '{label}' → '{corrected}'")
+                    return corrected
+            else:
                 # Try to fix common prefix misreads
                 if label.startswith('T') and longitude_prefix.upper() == 'X':
                     # "TX1" should be "X1" - OCR misread X as T
@@ -1433,38 +1763,28 @@ class GridDetector:
                 circles = []
 
             if has_circle and circles:
-                # Filter circles by edge proximity - grid labels should be near bottom/left edges
-                # This prevents detecting circles from interior content (dimensions, room labels, etc.)
+                # Process ALL circles - grid labels can be anywhere (edges, middle, etc.)
+                # Alignment filtering will remove false positives later
                 img_height, img_width = image.shape[:2]
-                edge_margin_bottom = 300  # Only consider circles within 300px of bottom edge
-                edge_margin_left = 700    # Outer boundary for left edge
-                min_distance_from_left = 400  # Inner boundary - reject if TOO close (dimension markers)
+
+                # Only filter out very small circles near edges that are likely dimension markers
+                min_edge_distance = 100  # Circles within 100px of edge might be dimension markers
 
                 filtered_circles = []
                 for x, y, radius in circles:
-                    # Numbers should be near bottom edge
-                    near_bottom = y > img_height - edge_margin_bottom
-                    # Letters should be near left edge (two-stage filter)
-                    near_left = x < edge_margin_left
-                    too_close_to_left = x < min_distance_from_left
+                    # Keep circles that are either:
+                    # 1. Away from edges (in the middle/interior - likely grid labels)
+                    # 2. Near edges but large enough (grid label circles are typically larger)
+                    is_near_edge = (x < min_edge_distance or x > img_width - min_edge_distance or
+                                   y < min_edge_distance or y > img_height - min_edge_distance)
 
-                    # CRITICAL: Reject circles too close to left edge FIRST (dimension markers)
-                    # This must be checked before other conditions to prevent false positives
-                    if too_close_to_left:
-                        log.debug(f"Rejecting circle at ({x}, {y}) - too close to left edge (< 400px, likely dimension marker)")
+                    if is_near_edge and radius < 20:
+                        log.debug(f"Skipping small edge circle at ({x}, {y}) radius={radius}")
                         continue
 
-                    # Accept if near bottom OR near left (but not too close)
-                    if near_bottom:
-                        filtered_circles.append((x, y, radius))
-                        log.debug(f"Keeping bottom edge circle at ({x}, {y})")
-                    elif near_left:  # Already checked not too_close_to_left above
-                        filtered_circles.append((x, y, radius))
-                        log.debug(f"Keeping left edge circle at ({x}, {y}) - in safe zone (400-700px)")
-                    else:
-                        log.debug(f"Skipping interior circle at ({x}, {y}) - too far from edges")
+                    filtered_circles.append((x, y, radius))
 
-                log.info(f"Edge proximity filter: {len(circles)} → {len(filtered_circles)} circles (two-stage left filter: 400-700px)")
+                log.info(f"Circle filter: {len(circles)} → {len(filtered_circles)} circles (kept interior + large edge circles)")
 
                 for x, y, radius in filtered_circles:
                     label = self.extract_label_from_circle(
@@ -1495,14 +1815,48 @@ class GridDetector:
                         log.info(f"Circle detection successful with {len(labeled_positions)} labels")
 
         # CASE 1 & 2: Multi-character format (is_multi_characters=True)
-        # Use margin OCR as primary strategy
         else:  # is_multi_characters == True
             if has_circle:
-                # CASE 1: Multi-character with circles - Margin OCR first, circle fallback
-                log.info("CASE 1: Multi-character with circles - using margin OCR primary strategy...")
+                # CASE 1: Multi-character with circles - Circle detection FIRST (faster!)
+                log.info("CASE 1: Multi-character with circles - prioritizing circle detection...")
+                circles = self.detect_label_circles(image, min_radius=15, max_radius=50)
+                log.info(f"Detected {len(circles)} potential label circles")
+
+                if circles:
+                    # Process ALL circles - grid labels can be anywhere (edges OR middle)
+                    # Alignment filtering will remove false positives later
+                    img_height, img_width = image.shape[:2]
+
+                    # Only filter out very small circles that are likely noise
+                    filtered_circles = [(x, y, r) for x, y, r in circles if r >= 15]
+
+                    log.info(f"Circle filter: {len(circles)} → {len(filtered_circles)} circles (removed small circles)")
+
+                    for x, y, radius in filtered_circles:
+                        label = self.extract_label_from_circle(
+                            image, x, y, radius, padding=10,
+                            longitude_prefix=longitude_prefix,
+                            latitude_prefix=latitude_prefix
+                        )
+                        if label:
+                            labeled_positions.append((label, x, y))
+                            log.info(f"Circle detection extracted: '{label}' at ({x}, {y})")
+
+                    if labeled_positions:
+                        # Count what we found
+                        long_count = sum(1 for label, _, _ in labeled_positions if label.startswith(longitude_prefix.upper()))
+                        lat_count = sum(1 for label, _, _ in labeled_positions if label.startswith(latitude_prefix.upper()))
+                        log.info(f"Circle detection: {len(labeled_positions)} labels ({longitude_prefix}:{long_count}, {latitude_prefix}:{lat_count})")
+
+                        MIN_EXPECTED_LABELS = 8
+                        if len(labeled_positions) >= MIN_EXPECTED_LABELS:
+                            positions_from_circles = True
+                            log.info(f"Circle detection successful with {len(labeled_positions)} labels - skipping margin OCR")
+                        else:
+                            log.info(f"Circle detection found {len(labeled_positions)} labels (< {MIN_EXPECTED_LABELS}), will supplement with margin OCR")
             else:
                 # CASE 2: Multi-character plain text - Margin OCR only
-                log.info("CASE 2: Multi-character plain text - using margin OCR only...")
+                log.info("CASE 2: Multi-character plain text - using margin OCR...")
 
         # Margin OCR fallback/primary (for both single-char and multi-char cases)
         # For single-char: supplement circle detection OR main strategy if plain text
@@ -1521,17 +1875,16 @@ class GridDetector:
             # Determine margin sizes based on format
             if not is_multi_characters:
                 # Single-character: SMALLER margins to avoid interior content
-                # Numbers at bottom: narrow margin (150px) since they're typically in a single row
-                # Letters at left: wide margin (600px) to catch letters spread vertically
-                x_margin_height = min(crop_height, 150)  # Bottom strip up to 150px for numbers
-                y_margin_width = min(crop_width, 600)    # Left strip up to 600px for letters (very wide)
-                log.info(f"Single-character format: using narrow bottom margin (150px) and wide left margin (600px)")
+                x_margin_height = min(crop_height, 150)  # Bottom strip for numbers
+                y_margin_width = min(crop_width, 400)    # Left strip for letters
+                enlarge = 4  # Smaller scale for single-char (simpler patterns)
+                log.info(f"Single-character format: margins (bottom={x_margin_height}px, left={y_margin_width}px)")
             else:
-                # Multi-character: LARGER margins (labels may be further from edges)
-                x_margin_height = min(crop_height, 600)  # Bottom strip up to 600px
-                y_margin_width = min(crop_width, 600)    # Left strip up to 600px
-                log.info(f"Multi-character format: using larger margins (600px both)")
-
+                # Multi-character: Moderate margins (circle detection is primary)
+                x_margin_height = min(crop_height, 300)  # Bottom strip for X labels
+                y_margin_width = min(crop_width, 300)    # Left strip for Y labels
+                enlarge = 3  # Smaller scale for speed (labels are larger text)
+                log.info(f"Multi-character format: margins (bottom={x_margin_height}px, left={y_margin_width}px)")
 
             log.info(f"Scanning bottom edge: {crop_width}px wide × {x_margin_height}px tall")
             log.info(f"Scanning left edge: {y_margin_width}px wide × {crop_height}px tall")
@@ -1540,7 +1893,7 @@ class GridDetector:
                 working_image,     # Use CROPPED floor plan (less noise)
                 x_margin_height=x_margin_height,  # Bottom strip height
                 y_margin_width=y_margin_width,    # Left strip width
-                enlarge_factor=6,   # 6x enlargement - balance between quality and performance
+                enlarge_factor=enlarge,  # Reduced for performance
                 longitude_prefix=longitude_prefix,
                 latitude_prefix=latitude_prefix
             )
