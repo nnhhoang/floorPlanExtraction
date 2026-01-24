@@ -592,11 +592,9 @@ class GridDetector:
             pattern = rf'([{long_pattern}{lat_pattern}])(\d{{1,2}})'  # Limit to 1-2 digits
 
         # Keep as color image (EasyOCR handles 3 channels BGR/RGB)
-        # Primary strategy: fast, works for most cases
+        # Single scale for speed - no fallbacks
         primary_scale = 4
-        # Fallback strategies: only used when primary fails
-        # Include larger scales (5, 6) for cases where text is harder to read
-        fallback_configs = [(4, 'grayscale'), (5, 'normal'), (5, 'grayscale'), (6, 'normal'), (6, 'grayscale')]
+        fallback_configs = []  # No fallback for maximum speed
 
         def to_grayscale(img):
             if len(img.shape) == 3:

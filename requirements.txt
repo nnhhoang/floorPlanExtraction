@@ -3,7 +3,8 @@ PyMuPDF==1.24.14  # PyMuPDF provides fitz module for PDF handling
 opencv-python-headless==4.10.0.84  # Use headless version for Lambda
 numpy==1.26.4
 pandas==2.2.3  # For grid line data processing
-easyocr==1.7.2  # OCR for grid label detection
+paddleocr>=2.7.0  # OCR for grid label detection (PP-OCRv4, faster than EasyOCR)
+paddlepaddle>=2.5.0  # PaddlePaddle backend for PaddleOCR
 
 # AWS SDK
 boto3==1.35.76
