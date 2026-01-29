@@ -1,5 +1,4 @@
 # Core dependencies for PDF floor plan extraction
-python==3.12.8
 PyMuPDF==1.24.14  # PyMuPDF provides fitz module for PDF handling
 opencv-python-headless==4.10.0.84  # Use headless version for Lambda
 numpy==1.26.4
