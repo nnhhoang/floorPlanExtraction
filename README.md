@@ -1,8 +1,6 @@
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
-PDF Floor Plan Extractor - A Python tool that extracts floor plan images and grid line coordinates from Taisei BIM standard PDFs. Designed to run both locally and on AWS Lambda.
+PDF Floor Plan Extractor - A Python tool that extracts floor plan images and grid line coordinates from T-Company BIM standard PDFs. Designed to run both locally and on AWS Lambda.
 
 ## Commands
 
